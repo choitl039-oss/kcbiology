@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weight Potometer & Transpiration Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #e2e8f0;
+            color: #1e293b;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .header h1 { margin: 0 0 5px 0; color: #0f172a; font-size: 28px; }
+        .header p { margin: 0; color: #475569; font-size: 15px; }
+        
+        .dashboard {
+            max-width: 1350px;
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        /* --- Left Column: Potometer --- */
+        .col-left {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .canvas-card {
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        #potoCanvas {
+            background-color: #ffffff;
+            border-radius: 8px;
+            border: 2px solid #cbd5e1;
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .monitor-panel {
+            background: #0f172a;
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .monitor-title { text-align: center; color: #94a3b8; font-weight: bold; margin-bottom: 15px; letter-spacing: 1px; font-size: 14px;}
+        .stats-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #334155;
+            font-family: monospace;
+            font-size: 15px;
+        }
+        .stats-row:last-child { border: none; margin-bottom: 0; padding-bottom: 0; }
+        .highlight-mass { color: #facc15; font-weight: bold; font-size: 17px;}
+        .highlight-loss { color: #f87171; font-weight: bold; }
+
+        .btn-group { display: flex; gap: 10px; }
+        .btn {
+            flex: 1;
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            padding: 14px;
+            font-size: 15px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .btn:hover { background-color: #2563eb; }
+        .btn.reset { background-color: #0d9488; }
+        .btn.reset:hover { background-color: #0f766e; }
+
+        /* --- Right Column: Graph & Factors --- */
+        .col-right {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .chart-card {
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .factors-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .slider-group {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid #e2e8f0;
+            cursor: pointer;
+            transition: 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+        }
+        .slider-group:hover { border-color: #93c5fd; }
+        .slider-group.active {
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #334155;
+            font-size: 14px;
+        }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        
+        .graph-explanation {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8fafc;
+            border-left: 5px solid #3b82f6;
+            border-radius: 6px;
+            font-size: 14.5px;
+            color: #334155;
+            line-height: 1.5;
+        }
+        .concept-box {
+            background-color: #fffbeb;
+            border-left: 5px solid #f59e0b;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #78350f;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Weight Potometer & Transpiration Analysis</h1>
+        <p>Explore how environmental factors affect transpiration by measuring mass lost over time.</p>
+    </div>
+
+    <div class="dashboard">
+        
+        <!-- ================= LEFT COLUMN ================= -->
+        <div class="col-left">
+            <div class="canvas-card">
+                <canvas id="potoCanvas" width="600" height="420"></canvas>
+            </div>
+
+            <div class="monitor-panel">
+                <div class="monitor-title">DIGITAL BALANCE MONITOR</div>
+                <div class="stats-row">
+                    <span>Current Apparatus Mass:</span>
+                    <span class="highlight-mass" id="stat-mass">145.000 g</span>
+                </div>
+                <div class="stats-row">
+                    <span>Total Mass Lost (Water Transpired):</span>
+                    <span class="highlight-loss" id="stat-loss">0.000 g</span>
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn" id="playBtn">Play Simulation</button>
+                <button class="btn reset" id="resetBtn">Refill Water (Reset)</button>
+            </div>
+            
+            <div class="concept-box">
+                <strong>Key Concept:</strong> A <strong>weight potometer</strong> measures the rate of transpiration almost directly by measuring the drop in mass. The layer of oil is crucial—it prevents water from evaporating directly from the flask, ensuring that any mass lost is solely due to water escaping through the plant's stomata.
+            </div>
+        </div>
+
+        <!-- ================= RIGHT COLUMN ================= -->
+        <div class="col-right">
+            <div class="chart-card">
+                <div style="height: 250px; position: relative;">
+                    <canvas id="factorChart"></canvas>
+                </div>
+                <div class="graph-explanation" id="graph-text">
+                    <!-- Text updates dynamically -->
+                </div>
+            </div>
+
+            <div class="factors-grid">
+                <div class="slider-group active" id="group-light" onclick="selectFactor('light')">
+                    <div class="slider-header"><span>Light Intensity</span> <span id="val-light">70%</span></div>
+                    <input type="range" id="slide-light" min="0" max="100" value="70">
+                </div>
+                
+                <div class="slider-group" id="group-temp" onclick="selectFactor('temp')">
+                    <div class="slider-header"><span>Temperature</span> <span id="val-temp">25°C</span></div>
+                    <input type="range" id="slide-temp" min="10" max="45" value="25">
+                </div>
+
+                <div class="slider-group" id="group-wind" onclick="selectFactor('wind')">
+                    <div class="slider-header"><span>Wind Speed</span> <span id="val-wind">15 km/h</span></div>
+                    <input type="range" id="slide-wind" min="0" max="100" value="15">
+                </div>
+
+                <div class="slider-group" id="group-humidity" onclick="selectFactor('humidity')">
+                    <div class="slider-header"><span>Humidity</span> <span id="val-humidity">40%</span></div>
+                    <input type="range" id="slide-humidity" min="10" max="100" value="40">
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        /* =========================================
+           PART 1: MATHEMATICAL MODELS & GRAPHING
+        ========================================= */
+        const factorDescriptions = {
+            light: "<strong>Light Intensity:</strong> As light increases, stomata open wider to allow more CO₂ in for photosynthesis. This proportionately increases the rate of transpiration until the stomata are fully open, causing the rate to plateau.",
+            temp: "<strong>Temperature:</strong> As temperature increases, the kinetic energy of water molecules increases. This accelerates the rate of evaporation from the mesophyll surfaces into the air spaces, exponentially increasing transpiration.",
+            wind: "<strong>Air Movement (Wind Speed):</strong> As wind speed increases, it blows away the humid diffusion shell around the leaf, steepening the concentration gradient and increasing transpiration. <strong>However, when wind speed further increases to extreme levels</strong>, excessive water loss causes guard cells to lose turgor, closing the stomata and causing a sharp drop in the transpiration rate.",
+            humidity: "<strong>Relative Humidity:</strong> As humidity increases, the water vapor concentration in the atmosphere rises. This reduces the concentration gradient between the inside of the leaf and the outside air, causing the rate of transpiration to steadily decrease."
+        };
+
+        const mathModels = {
+            light: (x) => { return 100 * (1 - Math.exp(-0.05 * x)); }, 
+            temp: (x) => { return Math.pow(x, 2) / 20.25; }, 
+            wind: (x) => { 
+                if(x < 50) return 20 + (80 * Math.sin((x / 50) * (Math.PI / 2)));
+                else return 100 * Math.exp(-0.08 * (x - 50)); 
+            },
+            humidity: (x) => { return 110 - x; } 
+        };
+
+        let activeFactor = 'light';
+        const ctxChart = document.getElementById('factorChart').getContext('2d');
+        let factorChart;
+
+        function updateChart() {
+            const currentVal = parseFloat(document.getElementById(`slide-${activeFactor}`).value);
+            
+            let curveData = [];
+            let maxDomain = (activeFactor === 'temp') ? 45 : 100;
+            let minDomain = (activeFactor === 'temp') ? 10 : 0;
+            if(activeFactor === 'humidity') minDomain = 10;
+
+            for(let i = minDomain; i <= maxDomain; i += (maxDomain-minDomain)/50) {
+                curveData.push({ x: i, y: mathModels[activeFactor](i) });
+            }
+
+            let currentPoint = [{ x: currentVal, y: mathModels[activeFactor](currentVal) }];
+
+            let xTitle = activeFactor.charAt(0).toUpperCase() + activeFactor.slice(1);
+            if(activeFactor === 'temp') xTitle = 'Temperature (°C)';
+            if(activeFactor === 'wind') xTitle = 'Wind Speed (km/h)';
+            if(activeFactor === 'humidity') xTitle = 'Relative Humidity (%)';
+            if(activeFactor === 'light') xTitle = 'Light Intensity (%)';
+
+            if(factorChart) factorChart.destroy();
+
+            factorChart = new Chart(ctxChart, {
+                type: 'scatter',
+                data: {
+                    datasets: [
+                        {
+                            type: 'scatter',
+                            label: 'Current Condition',
+                            data: currentPoint,
+                            backgroundColor: '#ef4444',
+                            pointRadius: 8,
+                            pointHoverRadius: 10,
+                            pointBorderColor: 'white',
+                            pointBorderWidth: 2,
+                            z: 10
+                        },
+                        {
+                            type: 'line',
+                            label: 'Theoretical Rate',
+                            data: curveData,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderWidth: 3,
+                            fill: true,
+                            pointRadius: 0,
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        x: { 
+                            title: { display: true, text: xTitle, font: { weight: 'bold' } },
+                            min: minDomain, max: maxDomain
+                        },
+                        y: { 
+                            title: { display: true, text: 'Transpiration Rate', font: { weight: 'bold' } },
+                            min: 0, max: 110,
+                            ticks: { display: false } 
+                        }
+                    }
+                }
+            });
+
+            document.getElementById('graph-text').innerHTML = factorDescriptions[activeFactor];
+        }
+
+        window.selectFactor = function(factor) {
+            activeFactor = factor;
+            document.querySelectorAll('.slider-group').forEach(el => el.classList.remove('active'));
+            document.getElementById(`group-${factor}`).classList.add('active');
+            updateChart();
+        };
+
+        /* =========================================
+           PART 2: WEIGHT POTOMETER ANIMATION
+        ========================================= */
+        const potoCanvas = document.getElementById('potoCanvas');
+        const potoCtx = potoCanvas.getContext('2d');
+        const playBtn = document.getElementById('playBtn');
+        const resetBtn = document.getElementById('resetBtn');
+
+        // Start PAUSED so students can record initial mass
+        let isPlaying = false; 
+        
+        // Simulation variables
+        const initialMass = 145.000; // grams
+        let currentMass = initialMass;
+        
+        // Water level (Y coordinate, higher number = lower physical level on canvas)
+        const startWaterY = 170;
+        const maxWaterDrop = 110; 
+        let waterY = startWaterY;
+
+        let vaporParticles = [];
+        
+        // Plant geometry (centered for the flask)
+        const centerX = 300;
+        const leaves = [ 
+            {x: centerX - 60, y: 100}, {x: centerX + 70, y: 70}, 
+            {x: centerX - 80, y: 50}, {x: centerX + 50, y: 30} 
+        ];
+
+        class VaporParticle {
+            constructor(x, y) {
+                this.x = x + (Math.random() - 0.5) * 30;
+                this.y = y + (Math.random() - 0.5) * 20;
+                this.life = 0;
+                this.maxLife = 50 + Math.random()*20;
+                this.size = 2 + Math.random() * 2;
+            }
+            update(rateModifier) {
+                this.life++;
+                this.y -= 2 * Math.max(0.5, rateModifier); 
+                this.x += (Math.random() - 0.5) * 4; 
+            }
+            draw() {
+                const alpha = Math.max(0, 1 - (this.life / this.maxLife));
+                potoCtx.globalAlpha = alpha;
+                potoCtx.beginPath(); potoCtx.arc(this.x, this.y, this.size, 0, Math.PI*2);
+                potoCtx.fillStyle = '#bae6fd'; potoCtx.fill();
+                potoCtx.globalAlpha = 1.0;
+            }
+        }
+
+        function drawWeightPotometer() {
+            potoCtx.clearRect(0, 0, potoCanvas.width, potoCanvas.height);
+
+            // 1. Digital Balance (Scale)
+            potoCtx.fillStyle = '#cbd5e1'; 
+            potoCtx.fillRect(180, 350, 240, 50); // Base
+            potoCtx.fillStyle = '#94a3b8';
+            potoCtx.beginPath(); potoCtx.moveTo(190, 350); potoCtx.lineTo(180, 400); potoCtx.lineTo(420, 400); potoCtx.lineTo(410, 350); potoCtx.fill();
+            // Scale Pan
+            potoCtx.fillStyle = '#e2e8f0'; potoCtx.fillRect(220, 340, 160, 10);
+            
+            // Screen
+            potoCtx.fillStyle = '#0f172a'; potoCtx.fillRect(250, 365, 100, 25);
+            potoCtx.fillStyle = '#22c55e'; // Glowing green text
+            potoCtx.font = 'bold 16px monospace';
+            potoCtx.textAlign = 'center';
+            potoCtx.fillText(currentMass.toFixed(3) + ' g', 300, 383);
+            potoCtx.textAlign = 'left'; // reset
+
+            // 2. Boiling Tube / Flask
+            const flaskX = 260;
+            const flaskW = 80;
+            const flaskBottom = 340;
+
+            // Water
+            potoCtx.fillStyle = 'rgba(59, 130, 246, 0.25)';
+            potoCtx.fillRect(flaskX, waterY, flaskW, flaskBottom - waterY);
+
+            // Oil Layer (Stops evaporation)
+            potoCtx.fillStyle = 'rgba(234, 179, 8, 0.6)'; // Yellowish oil
+            potoCtx.fillRect(flaskX, waterY - 8, flaskW, 8);
+            
+            // Oil Label
+            potoCtx.strokeStyle = '#94a3b8'; potoCtx.lineWidth = 1;
+            potoCtx.beginPath(); potoCtx.moveTo(flaskX, waterY - 4); potoCtx.lineTo(200, waterY - 4); potoCtx.stroke();
+            potoCtx.fillStyle = '#475569'; potoCtx.font = '12px Arial';
+            potoCtx.fillText('Oil layer prevents', 85, waterY - 8);
+            potoCtx.fillText('evaporation', 85, waterY + 6);
+
+            // Glass Tube
+            potoCtx.strokeStyle = 'rgba(148, 163, 184, 0.8)'; potoCtx.lineWidth = 4;
+            potoCtx.beginPath();
+            potoCtx.moveTo(flaskX, 150); potoCtx.lineTo(flaskX, flaskBottom); 
+            potoCtx.lineTo(flaskX + flaskW, flaskBottom); potoCtx.lineTo(flaskX + flaskW, 150);
+            potoCtx.stroke();
+
+            // 3. Plant
+            potoCtx.strokeStyle = '#16a34a'; potoCtx.lineWidth = 8;
+            // Stem
+            potoCtx.beginPath(); 
+            potoCtx.moveTo(300, flaskBottom - 20); // Deep in water
+            potoCtx.lineTo(300, 100); 
+            potoCtx.quadraticCurveTo(300, 40, 280, 10); 
+            potoCtx.stroke();
+
+            // Leaves
+            potoCtx.fillStyle = '#22c55e';
+            potoCtx.beginPath(); potoCtx.ellipse(centerX - 60, 100, 40, 14, Math.PI/6, 0, Math.PI*2); potoCtx.fill();
+            potoCtx.beginPath(); potoCtx.ellipse(centerX + 70, 70, 35, 12, -Math.PI/5, 0, Math.PI*2); potoCtx.fill();
+            potoCtx.beginPath(); potoCtx.ellipse(centerX - 80, 50, 35, 12, Math.PI/4, 0, Math.PI*2); potoCtx.fill();
+            potoCtx.beginPath(); potoCtx.ellipse(centerX + 50, 30, 30, 10, -Math.PI/4, 0, Math.PI*2); potoCtx.fill();
+
+            // 4. Particles
+            vaporParticles.forEach(p => p.draw());
+        }
+
+        function calculateCombinedRate() {
+            let L = parseFloat(document.getElementById('slide-light').value);
+            let T = parseFloat(document.getElementById('slide-temp').value);
+            let W = parseFloat(document.getElementById('slide-wind').value);
+            let H = parseFloat(document.getElementById('slide-humidity').value);
+
+            document.getElementById('val-light').innerText = L + '%';
+            document.getElementById('val-temp').innerText = T + '°C';
+            document.getElementById('val-wind').innerText = W + ' km/h';
+            document.getElementById('val-humidity').innerText = H + '%';
+
+            let rL = mathModels.light(L) / mathModels.light(50);
+            let rT = mathModels.temp(T) / mathModels.temp(25);
+            let rW = mathModels.wind(W) / mathModels.wind(10);
+            let rH = mathModels.humidity(H) / mathModels.humidity(40);
+
+            return Math.max(0.02, Math.min(rL * rT * rW * rH, 5.0));
+        }
+
+        function updateSimulationLogic() {
+            // Even if paused, we must update slider text/graphs, which happens implicitly
+            // via calculateCombinedRate calling document.getElementById(...)
+            let rateModifier = calculateCombinedRate();
+
+            if (!isPlaying) return;
+
+            // Check if water runs out
+            if (waterY < startWaterY + maxWaterDrop) {
+                // Drop mass and water level
+                const massDropRate = 0.0015 * rateModifier;
+                currentMass -= massDropRate;
+                
+                // Map mass loss to visual water level drop
+                // Total allowed mass drop is about 2.0g for visual scaling
+                const massLost = initialMass - currentMass;
+                waterY = startWaterY + (massLost / 2.0) * maxWaterDrop;
+                
+                if(waterY > startWaterY + maxWaterDrop) waterY = startWaterY + maxWaterDrop; // Clamp
+            } else {
+                isPlaying = false;
+                playBtn.innerText = "Play Simulation";
+            }
+
+            // Update DOM Monitors
+            document.getElementById('stat-mass').innerText = currentMass.toFixed(3) + ' g';
+            document.getElementById('stat-loss').innerText = (initialMass - currentMass).toFixed(3) + ' g';
+
+            // Spawn Vapor Particles based on speed
+            if (Math.random() < 0.3 * rateModifier && waterY < startWaterY + maxWaterDrop) {
+                let leaf = leaves[Math.floor(Math.random() * leaves.length)];
+                vaporParticles.push(new VaporParticle(leaf.x, leaf.y));
+            }
+
+            for (let i = vaporParticles.length - 1; i >= 0; i--) {
+                vaporParticles[i].update(rateModifier);
+                if (vaporParticles[i].life > vaporParticles[i].maxLife) vaporParticles.splice(i, 1);
+            }
+        }
+
+        function animationLoop() {
+            updateSimulationLogic();
+            drawWeightPotometer();
+            requestAnimationFrame(animationLoop);
+        }
+
+        // Attach listeners
+        ['light', 'temp', 'wind', 'humidity'].forEach(factor => {
+            document.getElementById(`slide-${factor}`).addEventListener('input', () => {
+                if(activeFactor === factor) updateChart();
+            });
+        });
+
+        playBtn.addEventListener('click', () => {
+            if(waterY >= startWaterY + maxWaterDrop) { alert("The water is empty. Please refill the potometer."); return; }
+            isPlaying = !isPlaying;
+            playBtn.innerText = isPlaying ? "Pause Simulation" : "Play Simulation";
+        });
+
+        resetBtn.addEventListener('click', () => {
+            // Reset numerical values
+            currentMass = initialMass;
+            waterY = startWaterY;
+            vaporParticles = [];
+            
+            // Update the UI immediately
+            document.getElementById('stat-mass').innerText = currentMass.toFixed(3) + ' g';
+            document.getElementById('stat-loss').innerText = '0.000 g';
+
+            // Ensure the simulation STOPS so students can record initial mass
+            isPlaying = false; 
+            playBtn.innerText = "Play Simulation"; 
+        });
+
+        // Init
+        selectFactor('light');
+        animationLoop(); // The loop runs to render frames, but physics won't update until isPlaying = true
+
+    </script>
+</body>
+</html>
