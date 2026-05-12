@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Transpiration Guide</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        :root {
+            --red-color: #e63946;
+            --blue-color: #00b4d8;
+            --bg-color: #f8f9fa;
+            --text-main: #343a40;
+            --text-muted: #6c757d;
+            --accent: #495057;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 2rem;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+        }
+
+        /* Chart Styling */
+        #chart-container {
+            width: 100%;
+            height: 400px;
+            position: relative;
+        }
+
+        .axis text { font-size: 12px; fill: var(--text-muted); }
+        .axis path, .axis line { stroke: #dee2e6; }
+        .axis-title { font-size: 13px; font-weight: 600; fill: var(--text-main); }
+
+        .line-trans { fill: none; stroke: var(--red-color); stroke-width: 3px; }
+        .line-abs { fill: none; stroke: var(--blue-color); stroke-width: 3px; }
+        .area { fill: #adb5bd; fill-opacity: 0.4; stroke: none; }
+        .area-label { font-size: 16px; font-weight: bold; fill: #343a40; text-anchor: middle; }
+
+        /* Slider Controls */
+        .controls {
+            margin: 2rem 0;
+            padding: 1.5rem;
+            background: var(--bg-color);
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        input[type=range] {
+            width: 100%;
+            cursor: pointer;
+            accent-color: var(--accent);
+        }
+
+        /* Dynamic Description Box */
+        .step-description {
+            background: white;
+            border-left: 5px solid var(--accent);
+            padding: 1.5rem;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            font-size: 1.05rem;
+            min-height: 120px;
+        }
+
+        .keyword {
+            font-weight: bold;
+            color: #0056b3;
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        /* Interactive Tracker */
+        .tracker-line { stroke: var(--accent); stroke-width: 2px; stroke-dasharray: 4; }
+        .tracker-dot-trans { fill: var(--red-color); stroke: white; stroke-width: 2px; }
+        .tracker-dot-abs { fill: var(--blue-color); stroke: white; stroke-width: 2px; }
+        .tracker-text { font-size: 12px; font-weight: bold; fill: white; }
+        .tracker-bg-trans { fill: var(--red-color); rx: 4; }
+        .tracker-bg-abs { fill: var(--blue-color); rx: 4; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Plant Water Dynamics Over 24 Hours</h1>
+    <p class="subtitle">Use the slider below to explore the relationship between transpiration and water absorption.</p>
+    
+    <div id="chart-container"></div>
+
+    <div class="controls">
+        <div class="slider-header">
+            <span>Time of Day</span>
+            <span id="time-display" style="color: var(--accent); font-size: 1.3rem;">06:00</span>
+        </div>
+        <input type="range" id="timeSlider" min="0" max="24" step="0.1" value="0">
+        
+        <div class="step-description" id="description-box">
+            </div>
+    </div>
+</div>
+
+<script>
+    // 1. Data Preparation (0 to 24 hours)
+    const data = [
+        { t: 0, label: '0600', trans: 5, abs: 5 },
+        { t: 2, label: '0800', trans: 18, abs: 12 },
+        { t: 4, label: '1000', trans: 34, abs: 22 },
+        { t: 6, label: '1200', trans: 47, abs: 33 },
+        { t: 8, label: '1400', trans: 56, abs: 42 },
+        { t: 10, label: '1600', trans: 45, abs: 45 },
+        { t: 12, label: '1800', trans: 22, abs: 49 },
+        { t: 14, label: '2000', trans: 10, abs: 32 },
+        { t: 16, label: '2200', trans: 6, abs: 14 },
+        { t: 18, label: '2400', trans: 4, abs: 7 },
+        { t: 20, label: '0200', trans: 4.5, abs: 5.5 },
+        { t: 22, label: '0400', trans: 5, abs: 5.5 },
+        { t: 24, label: '0600', trans: 5.5, abs: 5.5 }
+    ];
+
+    // 2. Setup Chart Dimensions
+    const container = document.getElementById('chart-container');
+    const margin = {top: 30, right: 30, bottom: 50, left: 60};
+    const width = container.clientWidth - margin.left - margin.right;
+    const height = container.clientHeight - margin.top - margin.bottom;
+
+    const svg = d3.select("#chart-container").append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    // 3. Scales & Axes
+    const x = d3.scaleLinear().domain([0, 24]).range([0, width]);
+    const y = d3.scaleLinear().domain([0, 65]).range([height, 0]);
+
+    const xTickLabels = data.map(d => d.label);
+    svg.append("g")
+        .attr("class", "axis")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(x).tickValues(data.map(d => d.t)).tickFormat((d, i) => xTickLabels[i]));
+
+    svg.append("g")
+        .attr("class", "axis")
+        .call(d3.axisLeft(y).tickValues([10, 20, 30, 40, 50, 60]));
+
+    // Axis Titles
+    svg.append("text").attr("class", "axis-title").attr("x", width).attr("y", height + 40).style("text-anchor", "end").text("Time (hours)");
+    svg.append("text").attr("class", "axis-title").attr("transform", "rotate(-90)").attr("y", -40).attr("x", 0).style("text-anchor", "end").text("Rate (g h⁻¹)");
+
+    // 4. Draw Areas and Lines
+    const curveType = d3.curveMonotoneX;
+    
+    // Areas
+    svg.append("path")
+        .datum(data.filter(d => d.t <= 10))
+        .attr("class", "area area-x")
+        .attr("d", d3.area().x(d => x(d.t)).y0(d => y(d.abs)).y1(d => y(d.trans)).curve(curveType));
+
+    svg.append("path")
+        .datum(data.filter(d => d.t >= 10))
+        .attr("class", "area area-y")
+        .attr("d", d3.area().x(d => x(d.t)).y0(d => y(d.trans)).y1(d => y(d.abs)).curve(curveType));
+
+    svg.append("text").attr("class", "area-label").attr("x", x(6.5)).attr("y", y(48)).text("Area X");
+    svg.append("text").attr("class", "area-label").attr("x", x(12)).attr("y", y(38)).text("Area Y");
+
+    // Lines
+    svg.append("path").datum(data).attr("class", "line-abs").attr("d", d3.line().x(d => x(d.t)).y(d => y(d.abs)).curve(curveType));
+    svg.append("path").datum(data).attr("class", "line-trans").attr("d", d3.line().x(d => x(d.t)).y(d => y(d.trans)).curve(curveType));
+
+    // Legend
+    svg.append("circle").attr("cx", 20).attr("cy", 10).attr("r", 5).style("fill", "var(--red-color)");
+    svg.append("text").attr("x", 30).attr("y", 14).text("Transpiration").style("font-size", "13px").attr("alignment-baseline","middle");
+    svg.append("circle").attr("cx", 20).attr("cy", 30).attr("r", 5).style("fill", "var(--blue-color)");
+    svg.append("text").attr("x", 30).attr("y", 34).text("Water Absorption").style("font-size", "13px").attr("alignment-baseline","middle");
+
+    // 5. Interactive Tracker Elements
+    const tracker = svg.append("g").style("display", "none");
+    
+    tracker.append("line").attr("class", "tracker-line").attr("y1", 0).attr("y2", height);
+    
+    // Transpiration Tracker
+    tracker.append("circle").attr("class", "tracker-dot-trans").attr("r", 6);
+    const transLabelGroup = tracker.append("g").attr("transform", "translate(10, -10)");
+    transLabelGroup.append("rect").attr("class", "tracker-bg-trans").attr("width", 35).attr("height", 20).attr("y", -10);
+    const transText = transLabelGroup.append("text").attr("class", "tracker-text").attr("x", 17.5).attr("y", 4).style("text-anchor", "middle");
+
+    // Absorption Tracker
+    tracker.append("circle").attr("class", "tracker-dot-abs").attr("r", 6);
+    const absLabelGroup = tracker.append("g").attr("transform", "translate(10, 10)");
+    absLabelGroup.append("rect").attr("class", "tracker-bg-abs").attr("width", 35).attr("height", 20).attr("y", -10);
+    const absText = absLabelGroup.append("text").attr("class", "tracker-text").attr("x", 17.5).attr("y", 4).style("text-anchor", "middle");
+
+    // 6. Logic & Interpolation
+    const slider = document.getElementById('timeSlider');
+    const timeDisplay = document.getElementById('time-display');
+    const descBox = document.getElementById('description-box');
+
+    function getInterpolatedValue(t, key) {
+        let i = 0;
+        while(i < data.length - 1 && data[i+1].t <= t) i++;
+        if (i === data.length - 1) return data[i][key];
+        
+        let d0 = data[i], d1 = data[i+1];
+        let ratio = (t - d0.t) / (d1.t - d0.t);
+        // Simple linear interpolation for the tracker position
+        return d0[key] + ratio * (d1[key] - d0[key]); 
+    }
+
+    function formatTime(t) {
+        let hours = Math.floor(t) + 6; // starts at 0600
+        if (hours >= 24) hours -= 24;
+        let mins = Math.round((t % 1) * 60);
+        return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+    }
+
+    function updateStepDescription(t) {
+        let html = "";
+        
+        if (t === 0) {
+            html = "<strong>06:00 (Start of Day):</strong> The sun is rising. Both transpiration and water absorption are at their lowest baseline. The stomata are mostly closed.";
+        } else if (t > 0 && t < 8) {
+            html = "<strong>Morning to Early Afternoon:</strong> Light intensity and temperature rise, causing stomata to open <span class='keyword'>wider</span>. The rate of <span class='keyword'>evaporation</span> increases rapidly. The plant is losing more water than it can absorb, creating Area X (Net Water <span class='keyword'>Loss</span>).";
+        } else if (t >= 8 && t < 10) {
+            html = "<strong>Mid-Afternoon (Peak):</strong> The rate of transpiration reaches its maximum around 14:00. The increased transpiration creates a massive <span class='keyword'>transpiration pull</span>, forcing the roots to absorb more water to catch up. Absorption is still rising rapidly.";
+        } else if (t >= 10 && t < 10.5) {
+            html = "<strong>16:00 (Intersection):</strong> A crucial turning point. The rate of transpiration has dropped to exactly match the rate of water absorption. This is the moment the plant's internal water deficit is at its highest point.";
+        } else if (t >= 10.5 && t < 18) {
+            html = "<strong>Evening to Midnight:</strong> Temperatures drop and light fades. Stomata close, severely dropping transpiration. Water absorption also falls, but remains higher than transpiration. The plant begins a net <span class='keyword'>uptake</span> of water (Area Y).";
+        } else {
+            html = "<strong>Night to Early Morning:</strong> Both rates are low and stable. Because Area Y is <span class='keyword'>larger</span> than Area X over the 24 hours, the plant has effectively retained extra water for photosynthesis and cell growth.";
+        }
+        
+        descBox.innerHTML = html;
+        
+        // Dynamically update border color based on phase
+        if (t < 10) { descBox.style.borderLeftColor = "var(--red-color)"; } 
+        else if (t >= 10 && t < 18) { descBox.style.borderLeftColor = "var(--blue-color)"; }
+        else { descBox.style.borderLeftColor = "var(--accent)"; }
+    }
+
+    function updateChart() {
+        const t = parseFloat(slider.value);
+        tracker.style("display", "block");
+
+        // Update Tracker Line
+        const xPos = x(t);
+        tracker.select(".tracker-line").attr("x1", xPos).attr("x2", xPos);
+
+        // Calculate Y values
+        const vTrans = getInterpolatedValue(t, 'trans');
+        const vAbs = getInterpolatedValue(t, 'abs');
+        const yTrans = y(vTrans);
+        const yAbs = y(vAbs);
+
+        // Move Dots & Labels
+        tracker.select(".tracker-dot-trans").attr("cx", xPos).attr("cy", yTrans);
+        tracker.select(".tracker-dot-abs").attr("cx", xPos).attr("cy", yAbs);
+
+        transLabelGroup.attr("transform", `translate(${xPos + 12}, ${yTrans})`);
+        absLabelGroup.attr("transform", `translate(${xPos + 12}, ${yAbs})`);
+
+        // Prevent label overlap if they get too close
+        if (Math.abs(yTrans - yAbs) < 25) {
+            if (yTrans < yAbs) {
+                transLabelGroup.attr("transform", `translate(${xPos + 12}, ${yTrans - 10})`);
+                absLabelGroup.attr("transform", `translate(${xPos + 12}, ${yAbs + 10})`);
+            } else {
+                transLabelGroup.attr("transform", `translate(${xPos + 12}, ${yTrans + 10})`);
+                absLabelGroup.attr("transform", `translate(${xPos + 12}, ${yAbs - 10})`);
+            }
+        }
+
+        transText.text(Math.round(vTrans));
+        absText.text(Math.round(vAbs));
+
+        // Update UI
+        timeDisplay.innerText = formatTime(t);
+        updateStepDescription(t);
+    }
+
+    // Event Listeners
+    slider.addEventListener('input', updateChart);
+    
+    // Initialize chart
+    updateChart();
+
+</script>
+</body>
+</html>
